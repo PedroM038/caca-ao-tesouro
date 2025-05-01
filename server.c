@@ -16,6 +16,28 @@
 #define DATA 4
 #define MAX_DATA 127
 
+#define DATA 4
+#define MAX_DATA 127
+#define ACK 0
+#define NACK 1
+#define OK_ACK 2
+#define LIVRE 3
+#define TAMANHO 4
+#define DADOS 5
+#define TEXTO_ACK_NOME 6
+#define VIDEO_ACK_NOME 7
+#define IMAGEM_ACK_NOME 8
+#define FIM_ARQUIVO 9
+#define DIREITA 10
+#define CIMA 11
+#define BAIXO 12
+#define ESQUERDA 13
+#define LIVRE_2 14
+#define ERRO 15
+
+#define SEM_PERMISSAO_DE_ACESSO 0
+#define ESPACO_INSUFICIENTE 1
+
 //struct timeval {
  //   int tv_sec;
   //  int tv_usec;
@@ -94,6 +116,16 @@ int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_bu
     return -1;
 }
 
+// realiza soma byte a byte do buffer
+unsigned char checksum (unsigned char *buffer) {
+    unsigned int sum = buffer[1] + buffer[2]; //tamanho + sequencia + tipo
+    int size = buffer[1] >> 1; // tamanho do buffer
+    for (int i = 4; i < size; ++i) { // comeca depois do byte do checksum
+        sum+= buffer[i];
+    }
+    return (unsigned char) (0xff & sum);
+}   
+
 int main () {
 	int socket = cria_raw_socket ("lo"); // "eth0" ou "enp5s0"
     
@@ -105,29 +137,62 @@ int main () {
     
     unsigned char sequencia = 0xff; // valor provisorio de teste
     unsigned char tipo = 0x00;  // valor provisorio de teste
-    unsigned char checksum = 0x00; // valor provisorio de teste
   
     bytes_read = read (fd_read, read_buffer, MAX_DATA);
     unsigned char buffer[sizeof (Package) + bytes_read];// sera necessario tornar dinamico
     
     int counter = 1;
+    int corrupted = 0;
+    unsigned char type;
     while (bytes_read > 0) {                
         buffer[0] = 0x7e; // bits de inicio
         buffer[1] = bytes_read << 1; // move o tamanho 1 bit para esquerda e garante que somente os 7 bits menos signficarivos sejam escritos
         buffer[1] = buffer[1] | (0x10 & sequencia); // adinciona em buffer[1] apenas o quinto bit de sequencia
         buffer[2] = (0x0f & sequencia) << 4; // os 4 bits mais significativos de buffer[2] recebem os primeiros bits de sequencia
         buffer[2] = buffer[2] | (0x0f & tipo); // os 4 primieros bits de tipos sao guardados em buffer[2]
-        buffer[3] = checksum;
-      
+
         memcpy (&buffer[DATA], read_buffer, bytes_read);
 
+        buffer[3] = checksum (buffer);
+      
         if (send (socket, buffer, sizeof (buffer), 0) < 0) {
             perror ("Erro ao enviar\n");
             break;
         }
         printf ("%dº Pacote enviado\n", counter);
         usleep (100000); // 100ms 
-        
+
+        ssize_t tamanho = recebe_mensagem (socket, 1000, buffer, sizeof (buffer));
+        if (tamanho < 0) {
+            perror ("Erro ao receber dados");
+            break;
+        }
+        while (checksum (buffer) != buffer[3] && type == NACK) { // checksum incorreto ou erro no reenvio
+ 
+            buffer[0] = 0x7e; // bits de inicio
+            buffer[1] = bytes_read << 1; // move o tamanho 1 bit para esquerda e garante que somente os 7 bits menos signficarivos sejam escritos
+            buffer[1] = buffer[1] | (0x10 & sequencia); // adinciona em buffer[1] apenas o quinto bit de sequencia
+            buffer[2] = (0x0f & sequencia) << 4; // os 4 bits mais significativos de buffer[2] recebem os primeiros bits de sequencia
+            buffer[2] = buffer[2] | (0x0f & tipo); // os 4 primieros bits de tipos sao guardados em buffer[2]
+            memcpy (&buffer[DATA], read_buffer, bytes_read);
+            buffer[3] = checksum (buffer);         
+    
+            if (send (socket, buffer, sizeof (buffer), 0) < 0) {
+                perror ("Erro ao enviar\n");
+                break;
+            }
+            printf ("%dº Pacote enviado\n", counter);
+
+            ssize_t tamanho = recebe_mensagem (socket, 1000, buffer, sizeof (buffer));
+            if (tamanho < 0) {
+                perror ("Erro ao receber dados");
+                break;
+            }
+            type = (0xf & buffer[2]);
+            usleep (100000); // 100ms 
+            corrupted = 1;
+        }
+
         bytes_read = read (fd_read, read_buffer, 127);
         counter++;
     }
