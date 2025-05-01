@@ -102,7 +102,7 @@ int main () {
     unsigned char checksum = 0x00; // valor provisorio de teste
     unsigned char buffer[sizeof (Package) + MAX_DATA];
     int counter = 1;
-    while (bytes_read > 0) {
+    while (1) {
         ssize_t tamanho = recebe_mensagem (socket, 1000, buffer, sizeof (buffer));
         if (tamanho < 0) {
             perror ("Erro ao receber dados");
