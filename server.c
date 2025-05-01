@@ -108,12 +108,10 @@ int main () {
     unsigned char checksum = 0x00; // valor provisorio de teste
   
     bytes_read = read (fd_read, read_buffer, MAX_DATA);
-    unsigned char buffer[sizeof (Package) + bytes_read];
+    unsigned char buffer[sizeof (Package) + bytes_read];// sera necessario tornar dinamico
     
-    int counter;
-    while (bytes_read > 0) {
-        counter = 1;
-                
+    int counter = 1;
+    while (bytes_read > 0) {                
         buffer[0] = 0x7e; // bits de inicio
         buffer[1] = bytes_read << 1; // move o tamanho 1 bit para esquerda e garante que somente os 7 bits menos signficarivos sejam escritos
         buffer[1] = buffer[1] | (0x10 & sequencia); // adinciona em buffer[1] apenas o quinto bit de sequencia
@@ -128,19 +126,6 @@ int main () {
             break;
         }
         printf ("%dº Pacote enviado\n", counter);
-
-        ssize_t tamanho = recebe_mensagem (socket, 1000, buffer, sizeof (buffer));
-        if (tamanho < 0) {
-            perror ("Erro ao receber dados");
-            break;
-        }
-        printf("%dº Pacote recebido, tamanho do pacote: %ld bytes\n", counter, tamanho);
-            
-        unsigned int string_size = (buffer[1] >> 1) + 1; // adiciona espaco para /0
-        unsigned char string[string_size];
-        memcpy (string, &buffer[DATA], string_size -1); // copia sem considerar /0
-        string[string_size] = '\0'; 
-        printf ("%s", string);
         usleep (100000); // 100ms 
         
         bytes_read = read (fd_read, read_buffer, 127);
