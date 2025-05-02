@@ -14,6 +14,7 @@
 //#define SO_RCVTIMEO 20
 
 #define DATA 4
+#define MIN_SIZE 22
 #define MAX_DATA 127
 
 #define DATA 4
@@ -49,9 +50,10 @@ setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
  */
 
 
-typedef struct Package {
+ typedef struct Package {
     unsigned char start;
-    unsigned char info;
+    unsigned char info_upper;
+    unsigned char info_down;
     unsigned char checksum;
     //unsigned char *data; //0 - 127 
 } Package;
@@ -94,25 +96,38 @@ long long timestamp() {
     gettimeofday(&tp, NULL);
     return tp.tv_sec*1000 + tp.tv_usec/1000;
 }
+
+unsigned char get_size (unsigned char *buffer) {
+    return (buffer[1] >> 1);
+}
+
+unsigned char get_sequence (unsigned char *buffer) {
+    return (((0x01 & buffer[1]) << 4) | ((0xf0 & buffer[2]) >> 4)); // junta o primeiro bit de buffer[1] com os 4 mais significativos de buffer[2]
+}
+
+unsigned char get_type (unsigned char *buffer) {
+    return (0xf & buffer[2]);
+}
  
-int protocolo_e_valido(char* buffer, int tamanho_buffer) {
+int protocolo_e_valido(char* buffer, int tamanho_buffer, unsigned char sequencia) {
     if (tamanho_buffer <= 0) { return 0; }
     // insira a sua validação de protocolo aqui
-    return (buffer[0] == 0x7e);
+    return (buffer[0] == 0x7e && sequencia == get_sequence(buffer));
 }
  
 // retorna -1 se deu timeout, ou quantidade de bytes lidos
-int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_buffer) {
+int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_buffer, unsigned char sequencia) {
     long long comeco = timestamp();
     struct timeval timeout;
     timeout.tv_sec = timeoutMillis/1000;
     timeout.tv_usec = (timeoutMillis%1000) * 1000;
     setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
     int bytes_lidos;
+    unsigned char received_sequence;
     do {
         bytes_lidos = recv(soquete, buffer, tamanho_buffer, 0);
-        if (protocolo_e_valido(buffer, bytes_lidos)) { return bytes_lidos; }
-    } while (timestamp() - comeco <= timeoutMillis);
+        if (protocolo_e_valido(buffer, bytes_lidos, sequencia)) { return bytes_lidos; }
+    } while ((timestamp() - comeco <= timeoutMillis));
     return -1;
 }
 
@@ -120,14 +135,27 @@ int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_bu
 unsigned char checksum (unsigned char *buffer) {
     unsigned int sum = buffer[1] + buffer[2]; //tamanho + sequencia + tipo
     int size = buffer[1] >> 1; // tamanho do buffer
-    for (int i = 4; i < size; ++i) { // comeca depois do byte do checksum
+    for (int i = 4; i < 4 + size; ++i) { // comeca depois do byte do checksum
         sum+= buffer[i];
     }
     return (unsigned char) (0xff & sum);
-}   
+}
+
+void package_assembler (unsigned char *buffer, unsigned char size, unsigned char sequence, unsigned char type, unsigned char *data) {
+    buffer[0] = 0x7e; // bits de inicio
+    buffer[1] = (0x7f & size) << 1; // move o tamanho 1 bit para esquerda e garante que somente os 7 bits menos signficarivos sejam escritos
+    buffer[1] = buffer[1] | ((0x10 & sequence) >> 4); // adinciona em buffer[1] apenas o quinto bit de sequencia
+    buffer[2] = (0x0f & sequence) << 4; // os 4 bits mais significativos de buffer[2] recebem os primeiros bits de sequencia
+    buffer[2] = buffer[2] | (0x0f & type); // os 4 primieros bits de tipos sao guardados em buffer[2]
+    if (data == NULL || size == 0)
+        memset(&buffer[DATA], 0, MIN_SIZE);
+    else    
+        memcpy (&buffer[DATA], data, size);
+    buffer[3] = checksum (buffer);
+}
 
 int main () {
-	int socket = cria_raw_socket ("lo"); // "eth0" ou "enp5s0"
+	int socket = cria_raw_socket ("enp5s0"); // "eth0" ou "enp5s0"
     
 
     unsigned char read_buffer [MAX_DATA];
@@ -135,65 +163,33 @@ int main () {
     int fd_read = open("Romeo_and_Juliet.txt",  O_RDONLY);
     if (fd_read < 0) { /* tratar erro */}
     
-    unsigned char sequencia = 0xff; // valor provisorio de teste
-    unsigned char tipo = 0x00;  // valor provisorio de teste
+    unsigned char sequencia = 0;
+    unsigned char tipo = 0x0f;  // valor provisorio de teste
   
     bytes_read = read (fd_read, read_buffer, MAX_DATA);
     unsigned char buffer[sizeof (Package) + bytes_read];// sera necessario tornar dinamico
     
     int counter = 1;
-    int corrupted = 0;
     unsigned char type;
     while (bytes_read > 0) {                
-        buffer[0] = 0x7e; // bits de inicio
-        buffer[1] = bytes_read << 1; // move o tamanho 1 bit para esquerda e garante que somente os 7 bits menos signficarivos sejam escritos
-        buffer[1] = buffer[1] | (0x10 & sequencia); // adinciona em buffer[1] apenas o quinto bit de sequencia
-        buffer[2] = (0x0f & sequencia) << 4; // os 4 bits mais significativos de buffer[2] recebem os primeiros bits de sequencia
-        buffer[2] = buffer[2] | (0x0f & tipo); // os 4 primieros bits de tipos sao guardados em buffer[2]
+        do {
+            do {
+                package_assembler (buffer, bytes_read, sequencia, tipo, read_buffer);
+                if (send (socket, buffer, sizeof (buffer), 0) < 0) {
+                    perror ("Erro ao enviar\n");
+                    exit (0);
+                }
+                printf ("%dº Pacote enviado\n", counter);
+                //for (int i = 4; i < 4 + get_size(buffer); ++i) putchar (buffer[i]);
+                //usleep (100000); // 100ms 
+            } while (recebe_mensagem (socket, 1000, buffer, sizeof (buffer), sequencia) < 0);// espera e reenvia ate obter resposta
 
-        memcpy (&buffer[DATA], read_buffer, bytes_read);
-
-        buffer[3] = checksum (buffer);
-      
-        if (send (socket, buffer, sizeof (buffer), 0) < 0) {
-            perror ("Erro ao enviar\n");
-            break;
-        }
-        printf ("%dº Pacote enviado\n", counter);
-        usleep (100000); // 100ms 
-
-        ssize_t tamanho = recebe_mensagem (socket, 1000, buffer, sizeof (buffer));
-        if (tamanho < 0) {
-            perror ("Erro ao receber dados");
-            break;
-        }
-        while (checksum (buffer) != buffer[3] && type == NACK) { // checksum incorreto ou erro no reenvio
- 
-            buffer[0] = 0x7e; // bits de inicio
-            buffer[1] = bytes_read << 1; // move o tamanho 1 bit para esquerda e garante que somente os 7 bits menos signficarivos sejam escritos
-            buffer[1] = buffer[1] | (0x10 & sequencia); // adinciona em buffer[1] apenas o quinto bit de sequencia
-            buffer[2] = (0x0f & sequencia) << 4; // os 4 bits mais significativos de buffer[2] recebem os primeiros bits de sequencia
-            buffer[2] = buffer[2] | (0x0f & tipo); // os 4 primieros bits de tipos sao guardados em buffer[2]
-            memcpy (&buffer[DATA], read_buffer, bytes_read);
-            buffer[3] = checksum (buffer);         
-    
-            if (send (socket, buffer, sizeof (buffer), 0) < 0) {
-                perror ("Erro ao enviar\n");
-                break;
-            }
-            printf ("%dº Pacote enviado\n", counter);
-
-            ssize_t tamanho = recebe_mensagem (socket, 1000, buffer, sizeof (buffer));
-            if (tamanho < 0) {
-                perror ("Erro ao receber dados");
-                break;
-            }
-            type = (0xf & buffer[2]);
-            usleep (100000); // 100ms 
-            corrupted = 1;
-        }
+            type = get_type (buffer);
+            //usleep (100000); // 100ms 
+        } while (checksum (buffer) != buffer[3] || type != ACK); // checksum incorreto ou erro no reenvio
 
         bytes_read = read (fd_read, read_buffer, 127);
+        sequencia = (sequencia + 1) % 32;
         counter++;
     }
 
