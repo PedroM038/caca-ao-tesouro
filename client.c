@@ -155,20 +155,26 @@ void print_data (unsigned char* buffer) {
     unsigned int string_size = get_size(buffer) + 1; // adiciona espaco para /0
     unsigned char string[string_size];
     memcpy (string, &buffer[DATA], string_size -1); // copia sem considerar /0
-    string[string_size] = '\0'; 
-    printf ("%s", string);
+    string[string_size-1] = '\0'; 
+    fprintf(stdout, "%s", string);
+    //printf ("%s", string);
 }
 
 
-int main () {
-    int socket = cria_raw_socket ("lo"); // "eth0" ou "enp5s0
-    
+int main ( int argc, char** argv ) {
+	if (argc < 2) { 
+		printf ("deve ser executado ./client <nome da porta>  <nome_arquivo_de_destino>\n"); 
+		return 1;
+	}
+    int socket = cria_raw_socket (argv[1]);
+    int fd_write = open (argv[2], O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR| S_IRGRP);
+    if (fd_write < 0 ) { /* trata erro */ }
     unsigned char sequencia = 0;
     unsigned char tipo = 0x00;  // valor provisorio de teste
     unsigned char buffer[sizeof (Package) + MAX_DATA];
     int counter = 1;
     while (1) {
-        ssize_t tamanho = recebe_mensagem (socket, 100000, buffer, sizeof (buffer), sequencia); // tempo de espera deve ser maior que timeout de envio
+        ssize_t tamanho = recebe_mensagem (socket, 1000, buffer, sizeof (buffer), sequencia); // tempo de espera deve ser maior que timeout de envio
         if (tamanho < 0) {
             perror ("Erro ao receber dados");
             exit (0);
@@ -182,16 +188,17 @@ int main () {
             }
             printf ("NACK do %dº pacote enviado\n", counter);
 
-            ssize_t tamanho = recebe_mensagem (socket, 100000, buffer, sizeof (buffer), sequencia); // tempo de espera deve ser maior que timeout de envio
+            ssize_t tamanho = recebe_mensagem (socket, 1000, buffer, sizeof (buffer), sequencia); // tempo de espera deve ser maior que timeout de envio
             if (tamanho < 0) {
                 perror ("Erro ao receber dados");
                 exit (0);
             } 
 
-            usleep (100000); // 100ms 
+            //usleep (100000); // 100ms 
         }
 
-        print_data (buffer);
+        //print_data (buffer);
+        write (fd_write, &buffer[DATA], get_size(buffer));
         //printf("\n%dº Pacote recebido, tamanho do pacote: %ld bytes\n", counter, tamanho);
         package_assembler (buffer, 0, sequencia, ACK, NULL);     
         if (send (socket, buffer, sizeof (buffer), 0) < 0) {
@@ -202,9 +209,8 @@ int main () {
         sequencia = (sequencia + 1) % 32;
         counter++;            
 
-        usleep (100000); // 100ms 
+        //usleep (100000); // 100ms 
     }
 
-	
 	return 0;
 }
