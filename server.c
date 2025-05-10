@@ -154,14 +154,22 @@ void package_assembler (unsigned char *buffer, unsigned char size, unsigned char
     buffer[3] = checksum (buffer);
 }
 
-int main () {
-	int socket = cria_raw_socket ("enp5s0"); // "eth0" ou "enp5s0"
+int main ( int argc, char** argv ) {
+    if (argc < 2) { 
+		printf ("executar ./server <nome da porta> <nome_do_arquivo_fonte"); 
+		return 1;
+	}
+	int socket = cria_raw_socket (argv[1]);
+
     
 
     unsigned char read_buffer [MAX_DATA];
     int bytes_read;
-    int fd_read = open("Romeo_and_Juliet.txt",  O_RDONLY);
-    if (fd_read < 0) { /* tratar erro */}
+    int fd_read = open(argv[2],  O_RDONLY); //"Romeo_and_Juliet.txt"
+    if (fd_read < 0) { 
+		printf ("executar ./server <nome da porta> <nome_do_arquivo_fonte"); 
+		return 1;
+	}
     
     unsigned char sequencia = 0;
     unsigned char tipo = 0x0f;  // valor provisorio de teste
