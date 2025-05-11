@@ -12,6 +12,7 @@
 
 //#define SOL_SOCKET 1
 //#define SO_RCVTIMEO 20
+#define ESCAPE_BYTE 0xFF
 
 #define DATA 4
 #define MAX_DATA 127
@@ -160,6 +161,26 @@ void print_data (unsigned char* buffer) {
     //printf ("%s", string);
 }
 
+// Escreve dados no arquivo ignorando os bytes de escape 0xFF que seguem 0x81, 0x88 ou 0xFF
+void write_data(FILE* fd_write, unsigned char* buffer, int size) {
+    int i = 0;
+
+    while (i < size) {
+        unsigned char byte = buffer[i];
+        fputc(byte, fd_write);
+
+        // Caso de byte problematico pula o escape
+        if ((byte == 0x81 || byte == 0x88 || byte == 0xFF) &&
+            i < size - 1 && buffer[i + 1] == 0xFF) {
+            i += 2; // salta o byte de escape
+        } else {
+            i++;
+        }
+    }
+    fflush(fd_write);
+}
+
+
 
 int main ( int argc, char** argv ) {
 	if (argc < 2) { 
@@ -167,14 +188,14 @@ int main ( int argc, char** argv ) {
 		return 1;
 	}
     int socket = cria_raw_socket (argv[1]);
-    int fd_write = open (argv[2], O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR| S_IRGRP);
-    if (fd_write < 0 ) { /* trata erro */ }
+    FILE *fd_write;
+    fd_write = fopen (argv[2], "wb");
     unsigned char sequencia = 0;
     unsigned char tipo = 0x00;  // valor provisorio de teste
     unsigned char buffer[sizeof (Package) + MAX_DATA];
     int counter = 1;
     while (1) {
-        ssize_t tamanho = recebe_mensagem (socket, 1000, buffer, sizeof (buffer), sequencia); // tempo de espera deve ser maior que timeout de envio
+        ssize_t tamanho = recebe_mensagem (socket, 100000, buffer, sizeof (buffer), sequencia); // tempo de espera deve ser maior que timeout de envio
         if (tamanho < 0) {
             perror ("Erro ao receber dados");
             exit (0);
@@ -188,7 +209,7 @@ int main ( int argc, char** argv ) {
             }
             printf ("NACK do %dº pacote enviado\n", counter);
 
-            ssize_t tamanho = recebe_mensagem (socket, 1000, buffer, sizeof (buffer), sequencia); // tempo de espera deve ser maior que timeout de envio
+            ssize_t tamanho = recebe_mensagem (socket, 100000, buffer, sizeof (buffer), sequencia); // tempo de espera deve ser maior que timeout de envio
             if (tamanho < 0) {
                 perror ("Erro ao receber dados");
                 exit (0);
@@ -196,9 +217,9 @@ int main ( int argc, char** argv ) {
 
             //usleep (100000); // 100ms 
         }
-
+        write_data (fd_write, &buffer[DATA], get_size(buffer));
+        
         //print_data (buffer);
-        write (fd_write, &buffer[DATA], get_size(buffer));
         //printf("\n%dº Pacote recebido, tamanho do pacote: %ld bytes\n", counter, tamanho);
         package_assembler (buffer, 0, sequencia, ACK, NULL);     
         if (send (socket, buffer, sizeof (buffer), 0) < 0) {
@@ -212,5 +233,6 @@ int main ( int argc, char** argv ) {
         //usleep (100000); // 100ms 
     }
 
+	fclose(fd_write);
 	return 0;
 }
