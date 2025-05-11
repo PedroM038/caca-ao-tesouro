@@ -12,7 +12,7 @@
 
 //#define SOL_SOCKET 1
 //#define SO_RCVTIMEO 20
-
+#define ESCAPE_BYTE 0xFF
 #define DATA 4
 #define MIN_SIZE 22
 #define MAX_DATA 127
@@ -154,27 +154,59 @@ void package_assembler (unsigned char *buffer, unsigned char size, unsigned char
     buffer[3] = checksum (buffer);
 }
 
+// Le arquivo byte a byte verificando se ha bytes 0X81 ou 0x88 e insere 0xff quando isso ocorre
+// Retorna o tamanho do buffer lido
+int read_data (FILE* fd_read, unsigned char* read_buffer, int max_size) {
+    unsigned char byte;
+    int i = 0;
+    int b;
+
+    while(i < max_size) { // enquanto ouver espaco para inserir escape bytes
+        b = fgetc(fd_read);
+        if (b == EOF)
+            break;
+
+        byte = (unsigned char)b;
+        read_buffer[i++] = byte;
+
+        if ((byte == 0x88 || byte == 0x81 || byte == 0xFF)) {
+            if (i >= max_size) {
+                // nao houve espaco para inserir o byte problematico e o escape 
+                // desfaz leitura do byte para próxima chamada
+                ungetc(byte, fd_read);
+                i--; // desfaz escrita do byte
+                break;
+            }
+            read_buffer[i++] = ESCAPE_BYTE;
+        }
+    }
+
+    return i;
+}
+
+
 int main ( int argc, char** argv ) {
     if (argc < 2) { 
-		printf ("executar ./server <nome da porta> <nome_do_arquivo_fonte"); 
+		printf ("executar ./server <nome da porta> <nome_do_arquivo_fonte\n"); 
 		return 1;
 	}
-	int socket = cria_raw_socket (argv[1]);
-
+    int socket = cria_raw_socket (argv[1]);
     
 
     unsigned char read_buffer [MAX_DATA];
     int bytes_read;
-    int fd_read = open(argv[2],  O_RDONLY); //"Romeo_and_Juliet.txt"
-    if (fd_read < 0) { 
-		printf ("executar ./server <nome da porta> <nome_do_arquivo_fonte"); 
+    FILE *fd_read = fopen(argv[2], "rb");
+    if (fd_read == NULL) { 
+		printf ("executar ./server <nome da porta> <nome_do_arquivo_fonte\n"); 
 		return 1;
 	}
     
     unsigned char sequencia = 0;
     unsigned char tipo = 0x0f;  // valor provisorio de teste
   
-    bytes_read = read (fd_read, read_buffer, MAX_DATA);
+    
+    bytes_read = read_data (fd_read, read_buffer, MAX_DATA);
+    //bytes_read = read (fd_read, read_buffer, MAX_DATA);
     unsigned char buffer[sizeof (Package) + bytes_read];// sera necessario tornar dinamico
     
     int counter = 1;
@@ -196,12 +228,13 @@ int main ( int argc, char** argv ) {
             //usleep (100000); // 100ms 
         } while (checksum (buffer) != buffer[3] || type != ACK); // checksum incorreto ou erro no reenvio
 
-        bytes_read = read (fd_read, read_buffer, 127);
+        bytes_read = read_data (fd_read, read_buffer, MAX_DATA);
+        //bytes_read = read (fd_read, read_buffer, 127);
         sequencia = (sequencia + 1) % 32;
         counter++;
     }
 
-	
+	fclose (fd_read);
 	return 0;
 
 }
