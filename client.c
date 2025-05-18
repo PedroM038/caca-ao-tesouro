@@ -10,6 +10,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <pwd.h>
+
 //#define SOL_SOCKET 1
 //#define SO_RCVTIMEO 20
 #define ESCAPE_BYTE 0xFF
@@ -110,7 +114,7 @@ unsigned char get_type (unsigned char *buffer) {
 int protocolo_e_valido(char* buffer, int tamanho_buffer, unsigned char sequencia) {
     if (tamanho_buffer <= 0) { return 0; }
     // insira a sua validação de protocolo aqui
-    return (buffer[0] == 0x7e && sequencia == get_sequence(buffer));
+    return (buffer[0] == 0x7e);
 }
  
 // retorna -1 se deu timeout, ou quantidade de bytes lidos
@@ -189,7 +193,22 @@ int main ( int argc, char** argv ) {
 	}
     int socket = cria_raw_socket (argv[1]);
     FILE *fd_write;
+    const char *user = "ubuntu";
+    struct passwd *pw = getpwnam(user);
+    if (pw == NULL) {
+      printf ("Usuario nao encontrado\n");
+      return 1;
+    }
+    
+    uid_t uid = pw->pw_uid;
+    uid_t gid = pw->pw_gid;
+    
+    if (chown (argv[2], uid, gid) != 0) {
+      printf ("Erro ao mudar propriedade do arquivo de saida\n");
+      return 1;
+    }
     fd_write = fopen (argv[2], "wb");
+    
     unsigned char sequencia = 0;
     unsigned char tipo = 0x00;  // valor provisorio de teste
     unsigned char buffer[sizeof (Package) + MAX_DATA];
@@ -202,6 +221,7 @@ int main ( int argc, char** argv ) {
         }
         
         while (checksum (buffer) != buffer[3]) { // checksum incorreto
+            package_assembler (buffer, 0, sequencia, NACK, NULL);
             package_assembler (buffer, 0, sequencia, NACK, NULL);
             if (send (socket, buffer, sizeof (buffer), 0) < 0) {
                 perror ("Erro ao enviar\n");
@@ -217,17 +237,25 @@ int main ( int argc, char** argv ) {
 
             //usleep (100000); // 100ms 
         }
-        write_data (fd_write, &buffer[DATA], get_size(buffer));
+        if (get_sequence (buffer) == (sequencia - 1) % 32)  // ainda precisa determinar um intervalo de aceitacao
+          package_assembler (buffer, 0, get_sequence (buffer), ACK, NULL);
+        else {
+          write_data (fd_write, &buffer[DATA], get_size(buffer));
+          package_assembler (buffer, 0, sequencia, ACK, NULL);
+          sequencia = (sequencia + 1) % 32;
+        }
+        //write_data (fd_write, &buffer[DATA], get_size(buffer));
+        //if (sequencia == get_sequence (buffer))
         
         //print_data (buffer);
-        //printf("\n%dº Pacote recebido, tamanho do pacote: %ld bytes\n", counter, tamanho);
-        package_assembler (buffer, 0, sequencia, ACK, NULL);     
+        printf("\n%dº Pacote recebido, tamanho do pacote: %ld bytes\n", counter, tamanho);
+             
         if (send (socket, buffer, sizeof (buffer), 0) < 0) {
             perror ("Erro ao enviar\n");
             exit (0);
         }
-        //printf ("ACK do %dº pacote enviado\n", counter);
-        sequencia = (sequencia + 1) % 32;
+        printf ("ACK do %dº pacote enviado\n", counter);
+        
         counter++;            
 
         //usleep (100000); // 100ms 
@@ -236,3 +264,4 @@ int main ( int argc, char** argv ) {
 	fclose(fd_write);
 	return 0;
 }
+
