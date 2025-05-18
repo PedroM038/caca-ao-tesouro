@@ -205,9 +205,11 @@ int main ( int argc, char** argv ) {
     unsigned char tipo = 0x0f;  // valor provisorio de teste
   
     
+    //bytes_read = fread (&read_buffer, sizeof (unsigned char), MAX_DATA, fd_read);
     bytes_read = read_data (fd_read, read_buffer, MAX_DATA);
     //bytes_read = read (fd_read, read_buffer, MAX_DATA);
     unsigned char buffer[sizeof (Package) + bytes_read];// sera necessario tornar dinamico
+    unsigned char backup_buffer[sizeof (Package) + bytes_read];
     
     int counter = 1;
     unsigned char type;
@@ -215,6 +217,7 @@ int main ( int argc, char** argv ) {
         do {
             do {
                 package_assembler (buffer, bytes_read, sequencia, tipo, read_buffer);
+                memcpy (&backup_buffer, &buffer, sizeof (Package) + bytes_read);
                 if (send (socket, buffer, sizeof (buffer), 0) < 0) {
                     perror ("Erro ao enviar\n");
                     exit (0);
@@ -228,10 +231,13 @@ int main ( int argc, char** argv ) {
             //usleep (100000); // 100ms 
         } while (checksum (buffer) != buffer[3] || type != ACK); // checksum incorreto ou erro no reenvio
 
+        //bytes_read = fread (&read_buffer, sizeof (unsigned char), MAX_DATA, fd_read);
         bytes_read = read_data (fd_read, read_buffer, MAX_DATA);
         //bytes_read = read (fd_read, read_buffer, 127);
         sequencia = (sequencia + 1) % 32;
         counter++;
+
+        usleep (10);
     }
 
 	fclose (fd_read);
