@@ -1,267 +1,160 @@
-#include <arpa/inet.h>
-#include <net/ethernet.h>
-#include <linux/if_packet.h>
-#include <net/if.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
+#include "libClient.h"
+#include <signal.h>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <pwd.h>
+// Variável global para controle de saída
+ClienteEstado* cliente_global = NULL;
 
-//#define SOL_SOCKET 1
-//#define SO_RCVTIMEO 20
-#define ESCAPE_BYTE 0xFF
-
-#define DATA 4
-#define MAX_DATA 127
-#define MIN_SIZE 22
-
-#define ACK 0
-#define NACK 1
-#define OK_ACK 2
-#define LIVRE 3
-#define TAMANHO 4
-#define DADOS 5
-#define TEXTO_ACK_NOME 6
-#define VIDEO_ACK_NOME 7
-#define IMAGEM_ACK_NOME 8
-#define FIM_ARQUIVO 9
-#define DIREITA 10
-#define CIMA 11
-#define BAIXO 12
-#define ESQUERDA 13
-#define LIVRE_2 14
-#define ERRO 15
-
-#define SEM_PERMISSAO_DE_ACESSO 0
-#define ESPACO_INSUFICIENTE 1
-//struct timeval {
- //   int tv_sec;
-  //  int tv_usec;
-//};
-/*
-const int timeoutMillis = 300; // 300 milisegundos de timeout por exemplo
-struct timeval timeout = { .tv_sec = timeoutMillis / 1000, .tv_usec = (timeoutMillis % 1000) * 1000 };
-setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
- */
-
-
-typedef struct Package {
-    unsigned char start;
-    unsigned char info_upper;
-    unsigned char info_down;
-    unsigned char checksum;
-    //unsigned char *data; //0 - 127 
-} Package;
-
-int cria_raw_socket(char* nome_interface_rede) {
-    // Cria arquivo para o socket sem qualquer protocolo
-    int soquete = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
-    if (soquete == -1) {
-        fprintf(stderr, "Erro ao criar socket: Verifique se você é root!\n");
-        exit(-1);
+void signal_handler(int sig) {
+    printf("\nEncerrando cliente...\n");
+    if (cliente_global) {
+        destruir_cliente(cliente_global);
     }
- 
-    int ifindex = if_nametoindex(nome_interface_rede);
- 
-    struct sockaddr_ll endereco = {0};
-    endereco.sll_family = AF_PACKET;
-    endereco.sll_protocol = htons(ETH_P_ALL);
-    endereco.sll_ifindex = ifindex;
-    // Inicializa socket
-    if (bind(soquete, (struct sockaddr*) &endereco, sizeof(endereco)) == -1) {
-        fprintf(stderr, "Erro ao fazer bind no socket\n");
-        exit(-1);
+    exit(0);
+}
+
+void mostrar_menu() {
+    printf("\n=== CLIENTE CAÇA AO TESOURO ===\n");
+    printf("1. Receber arquivo\n");
+    printf("2. Enviar movimento - Direita\n");
+    printf("3. Enviar movimento - Cima\n");
+    printf("4. Enviar movimento - Baixo\n");
+    printf("5. Enviar movimento - Esquerda\n");
+    printf("6. Testar protocolo (enviar ACK)\n");
+    printf("7. Sair\n");
+    printf("Escolha uma opção: ");
+}
+
+void mostrar_info_cliente() {
+    if (cliente_global) {
+        printf("Socket: %d\n", cliente_global->socket);
+        printf("Sequência atual: %d\n", cliente_global->sequencia);
+        printf("Arquivo de destino: %s\n", 
+               strlen(cliente_global->nome_arquivo_destino) > 0 ? 
+               cliente_global->nome_arquivo_destino : "Nenhum");
     }
- 
-    struct packet_mreq mr = {0};
-    mr.mr_ifindex = ifindex;
-    mr.mr_type = PACKET_MR_PROMISC;
-    // Não joga fora o que identifica como lixo: Modo promíscuo
-    if (setsockopt(soquete, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &mr, sizeof(mr)) == -1) {
-        fprintf(stderr, "Erro ao fazer setsockopt: "
-            "Verifique se a interface de rede foi especificada corretamente.\n");
-        exit(-1);
+}
+
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        printf("Uso: sudo ./client <nome_da_interface>\n");
+        printf("Exemplo: sudo ./client lo\n");
+        return 1;
     }
- 
-    return soquete;
-}
 
-long long timestamp() {
-    struct timeval tp;
-    gettimeofday(&tp, NULL);
-    return tp.tv_sec*1000 + tp.tv_usec/1000;
-}
+    // Configurar handler para sinais
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
-unsigned char get_size (unsigned char *buffer) {
-    return (buffer[1] >> 1);
-}
- 
-unsigned char get_sequence (unsigned char *buffer) {
-    return (((0x01 & buffer[1]) << 4) | ((0xf0 & buffer[2]) >> 4)); // junta o primeiro bit de buffer[1] com os 4 mais significativos de buffer[2]
-}
-
-unsigned char get_type (unsigned char *buffer) {
-    return (0xf & buffer[2]);
-}
- 
-int protocolo_e_valido(char* buffer, int tamanho_buffer, unsigned char sequencia) {
-    if (tamanho_buffer <= 0) { return 0; }
-    // insira a sua validação de protocolo aqui
-    return (buffer[0] == 0x7e);
-}
- 
-// retorna -1 se deu timeout, ou quantidade de bytes lidos
-int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_buffer, unsigned char sequencia) {
-    long long comeco = timestamp();
-    struct timeval timeout;
-    timeout.tv_sec = timeoutMillis/1000;
-    timeout.tv_usec = (timeoutMillis%1000) * 1000;
-    setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
-    int bytes_lidos;
-    unsigned char received_sequence;
-    do {
-        bytes_lidos = recv(soquete, buffer, tamanho_buffer, 0);
-        if (protocolo_e_valido(buffer, bytes_lidos, sequencia)) { return bytes_lidos; }
-    } while ((timestamp() - comeco <= timeoutMillis));
-    return -1;
-}
-// realiza soma byte a byte do buffer
-unsigned char checksum (unsigned char *buffer) {
-    unsigned int sum = buffer[1] + buffer[2]; //tamanho + sequencia + tipo
-    int size = buffer[1] >> 1; // tamanho do buffer
-    for (int i = 4; i <  4 + size; ++i) { // comeca depois do byte do checksum
-        sum+= buffer[i];
-    }
-    return (unsigned char) (0xff & sum);
-}
-
-void package_assembler (unsigned char *buffer, unsigned char size, unsigned char sequence, unsigned char type, unsigned char *data) {
-    buffer[0] = 0x7e; // bits de inicio
-    buffer[1] = (0x7f & size) << 1; // move o tamanho 1 bit para esquerda e garante que somente os 7 bits menos signficarivos sejam escritos
-    buffer[1] = buffer[1] | ((0x10 & sequence) >> 4); // adinciona em buffer[1] apenas o quinto bit de sequencia
-    buffer[2] = (0x0f & sequence) << 4; // os 4 bits mais significativos de buffer[2] recebem os primeiros bits de sequencia
-    buffer[2] = buffer[2] | (0x0f & type); // os 4 primieros bits de tipos sao guardados em buffer[2]
-    if (data == NULL || size == 0)
-        memset(&buffer[DATA], 0, MIN_SIZE);
-    else    
-        memcpy (&buffer[DATA], data, size);
-    buffer[3] = checksum (buffer);
-}
-
-
-void print_data (unsigned char* buffer) {
-    unsigned int string_size = get_size(buffer) + 1; // adiciona espaco para /0
-    unsigned char string[string_size];
-    memcpy (string, &buffer[DATA], string_size -1); // copia sem considerar /0
-    string[string_size-1] = '\0'; 
-    fprintf(stdout, "%s", string);
-    //printf ("%s", string);
-}
-
-// Escreve dados no arquivo ignorando os bytes de escape 0xFF que seguem 0x81, 0x88 ou 0xFF
-void write_data(FILE* fd_write, unsigned char* buffer, int size) {
-    int i = 0;
-
-    while (i < size) {
-        unsigned char byte = buffer[i];
-        fputc(byte, fd_write);
-
-        // Caso de byte problematico pula o escape
-        if ((byte == 0x81 || byte == 0x88 || byte == 0xFF) &&
-            i < size - 1 && buffer[i + 1] == 0xFF) {
-            i += 2; // salta o byte de escape
-        } else {
-            i++;
-        }
-    }
-    fflush(fd_write);
-}
-
-
-
-int main ( int argc, char** argv ) {
-	if (argc < 2) { 
-		printf ("deve ser executado ./client <nome da porta>  <nome_arquivo_de_destino>\n"); 
-		return 1;
-	}
-    int socket = cria_raw_socket (argv[1]);
-    FILE *fd_write;
-    const char *user = "ubuntu";
-    struct passwd *pw = getpwnam(user);
-    if (pw == NULL) {
-      printf ("Usuario nao encontrado\n");
-      return 1;
-    }
+    printf("Iniciando cliente na interface: %s\n", argv[1]);
     
-    uid_t uid = pw->pw_uid;
-    uid_t gid = pw->pw_gid;
-    
-    if (chown (argv[2], uid, gid) != 0) {
-      printf ("Erro ao mudar propriedade do arquivo de saida\n");
-      return 1;
+    // Criar cliente
+    cliente_global = criar_cliente(argv[1]);
+    if (!cliente_global) {
+        printf("Erro ao criar cliente\n");
+        return 1;
     }
-    fd_write = fopen (argv[2], "wb");
-    
-    unsigned char sequencia = 0;
-    unsigned char tipo = 0x00;  // valor provisorio de teste
-    unsigned char buffer[sizeof (Package) + MAX_DATA];
-    int counter = 1;
+
+    printf("Cliente criado com sucesso!\n");
+    mostrar_info_cliente();
+
+    int opcao;
+    char nome_arquivo[256];
+
     while (1) {
-        ssize_t tamanho = recebe_mensagem (socket, 100000, buffer, sizeof (buffer), sequencia); // tempo de espera deve ser maior que timeout de envio
-        if (tamanho < 0) {
-            perror ("Erro ao receber dados");
-            exit (0);
+        mostrar_menu();
+        
+        if (scanf("%d", &opcao) != 1) {
+            printf("Opção inválida!\n");
+            while (getchar() != '\n'); // Limpar buffer
+            continue;
+        }
+        getchar(); // Consumir o \n
+
+        switch (opcao) {
+            case 1:
+                printf("Digite o nome do arquivo de destino: ");
+                if (fgets(nome_arquivo, sizeof(nome_arquivo), stdin) != NULL) {
+                    // Remover \n do final
+                    nome_arquivo[strcspn(nome_arquivo, "\n")] = 0;
+                    
+                    if (abrir_arquivo_recebimento(cliente_global, nome_arquivo) == 0) {
+                        printf("Aguardando recebimento do arquivo: %s\n", nome_arquivo);
+                        printf("Pressione Ctrl+C para cancelar...\n");
+                        
+                        if (receber_arquivo(cliente_global) == 0) {
+                            printf("Arquivo recebido com sucesso!\n");
+                        } else {
+                            printf("Erro ao receber arquivo!\n");
+                        }
+                    } else {
+                        printf("Erro ao criar arquivo: %s\n", nome_arquivo);
+                    }
+                }
+                break;
+
+            case 2:
+                printf("Enviando movimento: DIREITA\n");
+                if (enviar_movimento(cliente_global, DIREITA) >= 0) {
+                    printf("Movimento enviado com sucesso! Nova sequência: %d\n", 
+                           cliente_global->sequencia);
+                } else {
+                    printf("Erro ao enviar movimento!\n");
+                }
+                break;
+
+            case 3:
+                printf("Enviando movimento: CIMA\n");
+                if (enviar_movimento(cliente_global, CIMA) >= 0) {
+                    printf("Movimento enviado com sucesso! Nova sequência: %d\n", 
+                           cliente_global->sequencia);
+                } else {
+                    printf("Erro ao enviar movimento!\n");
+                }
+                break;
+
+            case 4:
+                printf("Enviando movimento: BAIXO\n");
+                if (enviar_movimento(cliente_global, BAIXO) >= 0) {
+                    printf("Movimento enviado com sucesso! Nova sequência: %d\n", 
+                           cliente_global->sequencia);
+                } else {
+                    printf("Erro ao enviar movimento!\n");
+                }
+                break;
+
+            case 5:
+                printf("Enviando movimento: ESQUERDA\n");
+                if (enviar_movimento(cliente_global, ESQUERDA) >= 0) {
+                    printf("Movimento enviado com sucesso! Nova sequência: %d\n", 
+                           cliente_global->sequencia);
+                } else {
+                    printf("Erro ao enviar movimento!\n");
+                }
+                break;
+
+            case 6:
+                printf("Enviando ACK de teste...\n");
+                if (envia_ack(cliente_global->socket, cliente_global->sequencia) >= 0) {
+                    printf("ACK enviado com sucesso!\n");
+                    cliente_global->sequencia = (cliente_global->sequencia + 1) % 32;
+                } else {
+                    printf("Erro ao enviar ACK!\n");
+                }
+                break;
+
+            case 7:
+                printf("Encerrando cliente...\n");
+                destruir_cliente(cliente_global);
+                return 0;
+
+            default:
+                printf("Opção inválida!\n");
+                break;
         }
         
-        while (checksum (buffer) != buffer[3]) { // checksum incorreto
-            package_assembler (buffer, 0, sequencia, NACK, NULL);
-            package_assembler (buffer, 0, sequencia, NACK, NULL);
-            if (send (socket, buffer, sizeof (buffer), 0) < 0) {
-                perror ("Erro ao enviar\n");
-                exit (0);
-            }
-            printf ("NACK do %dº pacote enviado\n", counter);
-
-            ssize_t tamanho = recebe_mensagem (socket, 100000, buffer, sizeof (buffer), sequencia); // tempo de espera deve ser maior que timeout de envio
-            if (tamanho < 0) {
-                perror ("Erro ao receber dados");
-                exit (0);
-            } 
-
-            //usleep (100000); // 100ms 
-        }
-        if (get_sequence (buffer) == (sequencia - 1) % 32)  // ainda precisa determinar um intervalo de aceitacao
-          package_assembler (buffer, 0, get_sequence (buffer), ACK, NULL);
-        else {
-          write_data (fd_write, &buffer[DATA], get_size(buffer));
-          package_assembler (buffer, 0, sequencia, ACK, NULL);
-          sequencia = (sequencia + 1) % 32;
-        }
-        //write_data (fd_write, &buffer[DATA], get_size(buffer));
-        //if (sequencia == get_sequence (buffer))
-        
-        //print_data (buffer);
-        printf("\n%dº Pacote recebido, tamanho do pacote: %ld bytes\n", counter, tamanho);
-             
-        if (send (socket, buffer, sizeof (buffer), 0) < 0) {
-            perror ("Erro ao enviar\n");
-            exit (0);
-        }
-        printf ("ACK do %dº pacote enviado\n", counter);
-        
-        counter++;            
-
-        //usleep (100000); // 100ms 
+        printf("\nInformações atuais do cliente:\n");
+        mostrar_info_cliente();
     }
 
-	fclose(fd_write);
-	return 0;
+    return 0;
 }
-
