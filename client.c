@@ -234,12 +234,78 @@ int controll () {
 }
 
 
+void atualiza_mapa_local(unsigned char map[8][8], unsigned char x, unsigned char y, int tesouro) {
+    if (tesouro)
+        map [x][y] = 2;
+    else 
+        map [x][y] = 1;
+}
+
+void atualiza_pos_local (unsigned char direcao, unsigned char *x, unsigned char *y) {
+    switch (direcao)
+    {
+    case CIMA:
+        if (*x > 0)
+            (*x)--;
+        break;
+    case BAIXO:
+        if ((*x) < 7)
+            (*x)++;
+        break;
+    case DIREITA:
+        if ((*y) < 7)
+            (*y)++;
+        break;
+    case ESQUERDA:
+        if ((*y) > 0)
+            (*y)--;
+        break;
+    default:
+        break;
+    }
+}
+
+FILE *abre_arquivo (unsigned char *nome_arquivo) {
+    FILE *fd_write = fopen(nome_arquivo, "wb");
+    const char *user = "ubuntu";
+    struct passwd *pw = getpwnam(user);
+    if (pw == NULL)
+    {
+        printf("Usuario nao encontrado\n");
+        return NULL;
+    }
+
+    uid_t uid = pw->pw_uid;
+    uid_t gid = pw->pw_gid;
+
+    if (chown(nome_arquivo, uid, gid) != 0)
+    {
+        printf("Erro ao mudar propriedade do arquivo de saida\n");
+        return NULL;
+    }
+
+    if (nome_arquivo == NULL)
+    {
+        perror("Erro ao criar o arquivo");
+        return NULL;
+    }
+
+    return fd_write;
+}
 
 int main ( int argc, char** argv ) {
 	if (argc < 2) { 
 		printf ("deve ser executado ./client <nome da porta>  <nome_arquivo_de_destino>\n"); 
 		return 1;
 	}
+
+    // mapa local do cliente
+    unsigned char map[8][8];
+    for (int i = 0; i < 8; i++)
+        for (int j = 0; j < 8; j++)
+            map[i][j] = 0;
+    unsigned char x = 0, y= 0; //player pos
+
     int socket = cria_raw_socket (argv[1]);
 
     //fd_write = fopen (argv[2], "wb");
@@ -257,7 +323,7 @@ int main ( int argc, char** argv ) {
     while (1) {
         if (recebido)
             tipo = controll ();
-            
+        atualiza_pos_local (tipo, &x, &y);
         recebido = 0;
         
         // Envia movimento e espeara ACK de movimento
@@ -282,6 +348,10 @@ int main ( int argc, char** argv ) {
         
         // recebe arquivo
         if ((type == TEXTO_ACK_NOME || type == IMAGEM_ACK_NOME || type == VIDEO_ACK_NOME)) {
+            FILE *fd_write;
+            unsigned char erro = 0;
+            atualiza_mapa_local(map, x, y, 1);
+
             unsigned char nome_arquivo[get_size(buffer)];
             memcpy(nome_arquivo, &buffer[DATA], get_size(buffer));
 
@@ -305,7 +375,8 @@ int main ( int argc, char** argv ) {
                     if (get_type(buffer) == TAMANHO && sequencia == get_sequence(buffer)) {
                         // trata tamanho
                         tamanho_arquivo = le_uint64 (&buffer[DATA]);
-                        if (tamanho_livre > tamanho_arquivo) {
+                        fd_write = abre_arquivo (nome_arquivo);
+                        if (fd_write != NULL && tamanho_livre > tamanho_arquivo) {
                             package_assembler (buffer, 0, get_sequence(buffer), ACK, NULL);
                             if (send (socket, buffer, sizeof (buffer), 0) < 0) {
                                 perror ("Erro ao enviar\n");
@@ -313,8 +384,19 @@ int main ( int argc, char** argv ) {
                             }
                             printf ("%dº Pacote enviado\n", counter);        
                         }
-                        else { // espaco insuficiente
-                            package_assembler (buffer, 0, get_sequence(buffer), ERRO, NULL);
+                        else { // erro para receber arquivo, envia codigo de erro junto da mensagem
+                            erro = 1;
+                            unsigned char error_log[64];
+                            uint64_t error_code;
+                            if (!fd_write) {
+                                error_code = SEM_PERMISSAO_DE_ACESSO;
+                            }
+                            else {
+                                error_code = ESPACO_INSUFICIENTE;
+                            }
+                            memcpy(error_log, &error_code, sizeof(uint64_t));
+                            package_assembler (buffer, sizeof(uint64_t), get_sequence(buffer), ERRO, error_log);
+
                             if (send (socket, buffer, sizeof (buffer), 0) < 0) {
                                 perror ("Erro ao enviar\n");
                                 exit (0);
@@ -351,28 +433,6 @@ int main ( int argc, char** argv ) {
             if (recebe_mensagem(socket, 1000, buffer, sizeof(buffer), sequencia) < 0){
                 perror ("Erro ao receber\n");
                 exit (0);
-            }
-
-            FILE *fd_write = fopen(nome_arquivo, "wb");
-            const char *user = "ubuntu";
-            struct passwd *pw = getpwnam(user);
-            if (pw == NULL) {
-            printf ("Usuario nao encontrado\n");
-            return 1;
-            }
-            
-            uid_t uid = pw->pw_uid;
-            uid_t gid = pw->pw_gid;
-            
-            if (chown (nome_arquivo, uid, gid) != 0) {
-            printf ("Erro ao mudar propriedade do arquivo de saida\n");
-            return 1;
-            }
-            
-
-            if (nome_arquivo == NULL) {
-                perror("Erro ao criar o arquivo");
-                return 1;
             }
 
             while (get_type (buffer) != FIM_ARQUIVO)
@@ -427,6 +487,7 @@ int main ( int argc, char** argv ) {
             sequencia = (sequencia + 1) % 32;
         }
         else if (type == OK_ACK ){
+            atualiza_mapa_local(map, x, y, 0);
             recebido = 1;
             sequencia = (sequencia + 1) % 32;
         }
