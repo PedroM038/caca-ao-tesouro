@@ -200,7 +200,7 @@ int64_t espaco_livre(unsigned char *caminho) {
 
 uint64_t le_uint64(unsigned char *src) {
     uint64_t resultado = 0;
-    for (size_t i = 0; i < sizeof(uint64_t); ++i) {
+    for (int i = sizeof(uint64_t) - 1; i >= 0; --i) {
         resultado <<= 8;
         resultado |= src[i];
     }
@@ -265,32 +265,44 @@ void atualiza_pos_local (unsigned char direcao, unsigned char *x, unsigned char 
     }
 }
 
-FILE *abre_arquivo (unsigned char *nome_arquivo) {
-    FILE *fd_write = fopen(nome_arquivo, "wb");
+FILE *abre_arquivo(unsigned char *nome_arquivo) {
+    FILE *fd_write = fopen((char *)nome_arquivo, "wb");
+    if (fd_write == NULL) {
+        perror("Erro ao criar o arquivo");
+        return NULL;
+    }
+
     const char *user = "ubuntu";
     struct passwd *pw = getpwnam(user);
-    if (pw == NULL)
-    {
-        printf("Usuario nao encontrado\n");
+    if (pw == NULL) {
+        printf("Usuário não encontrado\n");
+        fclose(fd_write);
         return NULL;
     }
 
     uid_t uid = pw->pw_uid;
     uid_t gid = pw->pw_gid;
 
-    if (chown(nome_arquivo, uid, gid) != 0)
-    {
-        printf("Erro ao mudar propriedade do arquivo de saida\n");
-        return NULL;
-    }
-
-    if (nome_arquivo == NULL)
-    {
-        perror("Erro ao criar o arquivo");
+    if (chown((char *)nome_arquivo, uid, gid) != 0) {
+        perror("Erro ao mudar propriedade do arquivo");
+        fclose(fd_write);
         return NULL;
     }
 
     return fd_write;
+}
+
+void play (unsigned char *nome_arquivo) {
+    printf ("%s\n", nome_arquivo);
+    
+    char comando[300];
+    snprintf(comando, sizeof(comando), "xdg-open \"%s\"", nome_arquivo);
+    int status = system(comando);
+    if (status == -1)
+    {
+        perror("Erro ao executar xdg-open");
+        return;
+    }
 }
 
 int main ( int argc, char** argv ) {
@@ -363,7 +375,7 @@ int main ( int argc, char** argv ) {
             sequencia = (sequencia + 1) % 32;
 
             // Envia movimento e espeara ACK de movimento
-            uint64_t tamanho_livre = espaco_livre(nome_arquivo);
+            uint64_t tamanho_livre = espaco_livre(".");
             uint64_t tamanho_arquivo;
             if (recebe_mensagem (socket, 1000, buffer, sizeof (buffer), sequencia) < 0) {
                 perror("Timeout\n");
@@ -481,7 +493,12 @@ int main ( int argc, char** argv ) {
                 perror("Erro ao enviar\n");
                 exit(0);
             }
-            
+
+            // abre arquivo se ele foi recebido corretamente
+            if (!erro) {
+                usleep(1000);
+                play (nome_arquivo);
+            }
 
             recebido = 1;
             sequencia = (sequencia + 1) % 32;
