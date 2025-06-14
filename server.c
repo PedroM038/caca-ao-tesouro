@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <time.h>
 
 //#define SOL_SOCKET 1
 //#define SO_RCVTIMEO 20
@@ -40,6 +41,11 @@
 
 #define SEM_PERMISSAO_DE_ACESSO 0
 #define ESPACO_INSUFICIENTE 1
+
+#define TAMANHO_NOME_ARQUIVO 64
+
+#define TAM 8
+#define VALORES 8
 
 //struct timeval {
  //   int tv_sec;
@@ -206,6 +212,62 @@ int read_data (FILE* fd_read, unsigned char* read_buffer, int max_size) {
     return i;
 }
 
+// geração do mapa
+void preencher_matriz_aleatoria(unsigned char matriz[TAM][TAM]) {
+    // Inicializa toda a matriz com zeros
+    for (int i = 0; i < TAM; i++) {
+        for (int j = 0; j < TAM; j++) {
+            matriz[i][j] = 0;
+        }
+    }
+
+    // Gera posições aleatórias únicas para os 9 números
+    int posicoes[TAM * TAM];
+    for (int i = 0; i < TAM * TAM; i++) {
+        posicoes[i] = i;
+    }
+
+    // Embaralha as posições (Fisher–Yates shuffle)
+    for (int i = TAM * TAM - 1; i > 0; i--) {
+        int j = rand() % (i + 1);
+        int tmp = posicoes[i];
+        posicoes[i] = posicoes[j];
+        posicoes[j] = tmp;
+    }
+
+    // Coloca os valores de 1 a 9 nas primeiras 9 posições embaralhadas
+    for (int k = 0; k < VALORES; k++) {
+        int idx = posicoes[k];
+        int linha = idx / TAM;
+        int coluna = idx % TAM;
+        matriz[linha][coluna] = k + 1;
+    }
+}
+
+FILE *abrir_arquivo_desconhecido(int numero, char *nome_saida) {
+    const char *exts[] = {"txt", "mp4", "jpg" };
+    char nome[64];
+
+    for (size_t i = 0; i < sizeof(exts) / sizeof(exts[0]); i++) {
+        snprintf(nome, sizeof(nome), "%d.%s", numero, exts[i]);
+        FILE *f = fopen(nome, "rb");
+        if (f != NULL) {
+            // Copia o nome encontrado para o argumento de saída
+            strncpy(nome_saida, nome, TAMANHO_NOME_ARQUIVO - 1);
+            nome_saida[TAMANHO_NOME_ARQUIVO - 1] = '\0'; // garante null-termination
+            return f;
+        }
+    }
+
+    // Se nenhum arquivo foi encontrado, zera nome_saida
+    if (nome_saida && TAMANHO_NOME_ARQUIVO > 0) {
+        nome_saida[0] = '\0';
+    }
+
+    return NULL;
+}
+
+
 
 int main ( int argc, char** argv ) {
     if (argc < 2) { 
@@ -225,12 +287,10 @@ int main ( int argc, char** argv ) {
     
     int counter = 1;
     unsigned char type, sequence;
-    unsigned char map[8][8];
-    for (int i = 0; i < 8; i++)
-        for (int j = 0; j < 8; j++)
-            map[i][j] = 0;
-    
-    map[0][1] = 1;
+    unsigned char map[TAM][TAM];
+
+    preencher_matriz_aleatoria (map);
+
     unsigned char x = 0, y= 0; //player pos
     int recebido = 1;
     while (1) {        
@@ -263,16 +323,28 @@ int main ( int argc, char** argv ) {
         if (sequencia == get_sequence (buffer)) {
             switch (get_type (buffer)) {
             case CIMA:
-                if (x > 0) x--;
+                if (x > 0) {
+                    x--;
+                    printf ("player moveu para cima\n");
+                }
                 break;
             case BAIXO:
-                if (x < 7) x++;
+                if (x < 7) {
+                    x++;
+                    printf ("player moveu para baixo\n");
+                }
                 break;
             case DIREITA:
-                if (y < 7) y++;
+                if (y < 7) {
+                    y++;
+                    printf ("player moveu para direita\n");
+                }
                 break;
-            case ESQUERDA:
-                if (y > 0) y--;
+            case ESQUERDA: 
+                if (y > 0) {
+                    y--;
+                    printf ("player moveu para esquerda\n");
+                }
                 break;
             default:
                 break;
@@ -282,15 +354,16 @@ int main ( int argc, char** argv ) {
         // envia arquivo
         if (map[x][y]) {
             int erro = 0;
-            printf ("enviando arquivo...\n");
+            printf ("PLAYER ENCONTROU OBJETO!!!\n");
 
-            unsigned char arquivo[64] = "Romeo_and_Juliet.txt";
-            FILE *fd_read = fopen(arquivo, "rb");
+            unsigned char arquivo[64];
+            FILE *fd_read = abrir_arquivo_desconhecido (map[x][y], arquivo); 
             if (fd_read == NULL) { 
                 printf ("falha ao abrir arquivo\n"); 
                 erro = 1;
             }
 
+            // envia o nome do arquivo
             do {
                 do {
                     if (checksum(buffer) == buffer[3] && get_sequence (buffer) == sequencia) 
@@ -311,8 +384,8 @@ int main ( int argc, char** argv ) {
                 // usleep (100000); // 100ms
             } while (checksum(buffer) != buffer[3] && get_type (buffer) != ACK); // checksum incorreto ou erro no reenvio
             sequencia = (sequencia + 1) % 32;
-            uint64_t tamanho = tamanho_arquivo(arquivo);
-            
+
+            uint64_t tamanho = tamanho_arquivo(arquivo); 
             // envia tamanho do arquivo
             if (tamanho > 0) {
                 unsigned char size_buffer [sizeof(uint64_t)];
@@ -335,7 +408,7 @@ int main ( int argc, char** argv ) {
             }
             sequencia = (sequencia + 1) % 32;
 
-            // trata erro
+            // verifica se ha erro antes de trasmitir arquivo
             if (get_type (buffer) == ERRO && !erro) {
                 printf ("COM erro\n");
                 erro = 1;
@@ -345,7 +418,7 @@ int main ( int argc, char** argv ) {
                 erro = 0;
             }
             
-            // envio de arquivo
+            // envio de arquivo caso nao haja erro
             unsigned char read_buffer [MAX_DATA];
             int bytes_read;
 
@@ -362,7 +435,6 @@ int main ( int argc, char** argv ) {
                             exit (0);
                         }
                         printf ("%dº Pacote enviado\n", counter);
-                        //for (int i = 4; i < 4 + get_size(buffer); ++i) putchar (buffer[i]);
                         //usleep (100000); // 100ms 
                     } while (recebe_mensagem (socket, 1000, buffer, sizeof (buffer), sequencia) < 0);// espera e reenvia ate obter resposta
 
