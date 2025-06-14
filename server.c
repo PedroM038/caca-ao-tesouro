@@ -5,10 +5,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdint.h>
 
 //#define SOL_SOCKET 1
 //#define SO_RCVTIMEO 20
@@ -110,9 +112,10 @@ unsigned char get_type (unsigned char *buffer) {
 }
  
 int protocolo_e_valido(char* buffer, int tamanho_buffer, unsigned char sequencia) {
+
     if (tamanho_buffer <= 0) { return 0; }
     // insira a sua validação de protocolo aqui
-    return (buffer[0] == 0x7e && sequencia == get_sequence(buffer));
+    return (buffer[0] == 0x7e /*&& sequencia == get_sequence(buffer)*/);
 }
  
 // retorna -1 se deu timeout, ou quantidade de bytes lidos
@@ -154,6 +157,25 @@ void package_assembler (unsigned char *buffer, unsigned char size, unsigned char
     buffer[3] = checksum (buffer);
 }
 
+// Retorna o tamanho do arquivo em bytes ou -1 em caso de erro
+off_t tamanho_arquivo(const char *caminho_arquivo) {
+    struct stat st;
+
+    // Verifica se o stat teve sucesso
+    if (stat(caminho_arquivo, &st) == 0) {
+        // Verifica se é um arquivo regular
+        if (S_ISREG(st.st_mode)) {
+            return st.st_size;
+        } else {
+            // Não é um arquivo regular
+            return -1;
+        }
+    } else {
+        // Erro ao obter informações do arquivo
+        return -1;
+    }
+}
+
 // Le arquivo byte a byte verificando se ha bytes 0X81 ou 0x88 e insere 0xff quando isso ocorre
 // Retorna o tamanho do buffer lido
 int read_data (FILE* fd_read, unsigned char* read_buffer, int max_size) {
@@ -187,60 +209,215 @@ int read_data (FILE* fd_read, unsigned char* read_buffer, int max_size) {
 
 int main ( int argc, char** argv ) {
     if (argc < 2) { 
-		printf ("executar ./server <nome da porta> <nome_do_arquivo_fonte\n"); 
+		printf ("executar ./server <nome da porta> <nome_do_arquivo_fonte>\n"); 
 		return 1;
 	}
     int socket = cria_raw_socket (argv[1]);
-    
-
-    unsigned char read_buffer [MAX_DATA];
-    int bytes_read;
-    FILE *fd_read = fopen(argv[2], "rb");
-    if (fd_read == NULL) { 
-		printf ("executar ./server <nome da porta> <nome_do_arquivo_fonte\n"); 
-		return 1;
-	}
     
     unsigned char sequencia = 0;
     unsigned char tipo = 0x0f;  // valor provisorio de teste
   
     
-    //bytes_read = fread (&read_buffer, sizeof (unsigned char), MAX_DATA, fd_read);
-    bytes_read = read_data (fd_read, read_buffer, MAX_DATA);
-    //bytes_read = read (fd_read, read_buffer, MAX_DATA);
-    unsigned char buffer[sizeof (Package) + bytes_read];// sera necessario tornar dinamico
-    unsigned char backup_buffer[sizeof (Package) + bytes_read];
+    unsigned char buffer[sizeof (Package) + MAX_DATA];// sera necessario tornar dinamico
+    unsigned char backup_receiv_buffer[sizeof (Package) + MAX_DATA];
+    unsigned char backup_sent_buffer[sizeof (Package) + MAX_DATA];
+
     
     int counter = 1;
-    unsigned char type;
-    while (bytes_read > 0) {                
-        do {
+    unsigned char type, sequence;
+    unsigned char map[8][8];
+    for (int i = 0; i < 8; i++)
+        for (int j = 0; j < 8; j++)
+            map[i][j] = 0;
+    
+    map[0][1] = 1;
+    unsigned char x = 0, y= 0; //player pos
+    int recebido = 1;
+    while (1) {        
+        printf ("linha = %d coluna =%d\n", x, y);
+
+        do
+        {
+        } while (recebe_mensagem(socket, 1000, buffer, sizeof(buffer), sequencia) < 0); // espera e reenvia ate obter resposta
+        printf ("passou\n");
+        sequence = get_sequence(buffer);
+        while (checksum(buffer) != buffer[3]) { // checksum incorreto
+            package_assembler(buffer, 0, get_sequence(buffer), NACK, NULL);
+            if (send(socket, buffer, sizeof(buffer), 0) < 0) {
+                perror("Erro ao enviar\n");
+                printf("\nerro aqui\n");
+                exit(0);
+            }
+            printf("NACK do %dº pacote enviado\n", counter);
+
+            ssize_t tamanho = recebe_mensagem(socket, 100000, buffer, sizeof(buffer), sequencia); // tempo de espera deve ser maior que timeout de envio
+            if (tamanho < 0) {
+                perror("Erro ao receber dados");
+                exit(0);
+            }
+            sequence = get_sequence(buffer);
+            // usleep (100000); // 100ms
+        }
+        printf ("sequencia recebida: %d sequencia atual: %d\n", get_sequence(buffer), sequencia);
+
+        if (sequencia == get_sequence (buffer)) {
+            switch (get_type (buffer)) {
+            case CIMA:
+                if (x > 0) x--;
+                break;
+            case BAIXO:
+                if (x < 7) x++;
+                break;
+            case DIREITA:
+                if (y < 7) y++;
+                break;
+            case ESQUERDA:
+                if (y > 0) y--;
+                break;
+            default:
+                break;
+            }
+        }
+
+        // envia arquivo
+        if (map[x][y]) {
+            int erro = 0;
+            printf ("enviando arquivo...\n");
+
+            unsigned char arquivo[64] = "Romeo_and_Juliet.txt";
+            FILE *fd_read = fopen(arquivo, "rb");
+            if (fd_read == NULL) { 
+                printf ("falha ao abrir arquivo\n"); 
+                erro = 1;
+            }
+
             do {
-                package_assembler (buffer, bytes_read, sequencia, tipo, read_buffer);
-                memcpy (&backup_buffer, &buffer, sizeof (Package) + bytes_read);
-                if (send (socket, buffer, sizeof (buffer), 0) < 0) {
-                    perror ("Erro ao enviar\n");
-                    exit (0);
+                do {
+                    if (checksum(buffer) == buffer[3] && get_sequence (buffer) == sequencia) 
+                        package_assembler (buffer, 64, get_sequence (buffer), TEXTO_ACK_NOME, arquivo);
+                    else {
+                        package_assembler (buffer, 0, get_sequence (buffer), NACK, NULL);
+                    }
+                    
+                    if (send(socket, buffer, sizeof(buffer), 0) < 0) {
+                        perror("Erro ao enviar\n");
+                        exit(0);
+                    }
+                    printf("%dº Pacote enviado\n", counter);
+                    // for (int i = 4; i < 4 + get_size(buffer); ++i) putchar (buffer[i]);
+                    // usleep (100000); // 100ms
+                } while (recebe_mensagem(socket, 1000, buffer, sizeof(buffer), sequencia) < 0); // espera e reenvia ate obter resposta
+                type = get_type(buffer);
+                // usleep (100000); // 100ms
+            } while (checksum(buffer) != buffer[3] && get_type (buffer) != ACK); // checksum incorreto ou erro no reenvio
+            sequencia = (sequencia + 1) % 32;
+            uint64_t tamanho = tamanho_arquivo(arquivo);
+            
+            // envia tamanho do arquivo
+            if (tamanho > 0) {
+                unsigned char size_buffer [sizeof(uint64_t)];
+                memcpy(size_buffer, &tamanho, sizeof(uint64_t));
+                do {
+                    do {
+
+                        package_assembler (buffer, sizeof(uint64_t), sequencia, TAMANHO, size_buffer);
+                        if (send(socket, buffer, sizeof(buffer), 0) < 0) {
+                            perror("Erro ao enviar\n");
+                            exit(0);
+                        }
+                        printf("%dº Pacote enviado\n", counter);
+                        // for (int i = 4; i < 4 + get_size(buffer); ++i) putchar (buffer[i]);
+                        // usleep (100000); // 100ms
+                    } while (recebe_mensagem(socket, 1000, buffer, sizeof(buffer), sequencia) < 0); // espera e reenvia ate obter resposta
+                    type = get_type(buffer);
+                    // usleep (100000); // 100ms
+                } while (checksum(buffer) != buffer[3] && get_type (buffer) == NACK); // checksum incorreto ou erro no reenvio
+            }
+            sequencia = (sequencia + 1) % 32;
+
+            // trata erro
+            if (get_type (buffer) == ERRO && !erro) {
+                printf ("COM erro\n");
+                erro = 1;
+            }
+            else if (get_type (buffer) == ACK && !erro) {
+                printf ("SEM erro\n");
+                erro = 0;
+            }
+            
+            // envio de arquivo
+            unsigned char read_buffer [MAX_DATA];
+            int bytes_read;
+
+            if (!erro)
+                bytes_read = read_data (fd_read, read_buffer, MAX_DATA);
+            
+            unsigned char type;
+            while (!erro && bytes_read > 0) {                
+                do {
+                    do {
+                        package_assembler (buffer, bytes_read, sequencia, DADOS, read_buffer);
+                        if (send (socket, buffer, sizeof (buffer), 0) < 0) {
+                            perror ("Erro ao enviar\n");
+                            exit (0);
+                        }
+                        printf ("%dº Pacote enviado\n", counter);
+                        //for (int i = 4; i < 4 + get_size(buffer); ++i) putchar (buffer[i]);
+                        //usleep (100000); // 100ms 
+                    } while (recebe_mensagem (socket, 1000, buffer, sizeof (buffer), sequencia) < 0);// espera e reenvia ate obter resposta
+
+                    type = get_type (buffer);
+                    //usleep (100000); // 100ms 
+                } while (checksum (buffer) != buffer[3] || type != ACK); // checksum incorreto ou erro no reenvio
+
+                if (sequencia == get_sequence (buffer)) {
+                    bytes_read = read_data (fd_read, read_buffer, MAX_DATA);
+
+                    printf ("enviando dados\n");
+                    sequencia = (sequencia + 1) % 32;
                 }
-                printf ("%dº Pacote enviado\n", counter);
-                //for (int i = 4; i < 4 + get_size(buffer); ++i) putchar (buffer[i]);
-                //usleep (100000); // 100ms 
-            } while (recebe_mensagem (socket, 1000, buffer, sizeof (buffer), sequencia) < 0);// espera e reenvia ate obter resposta
 
-            type = get_type (buffer);
-            //usleep (100000); // 100ms 
-        } while (checksum (buffer) != buffer[3] || type != ACK); // checksum incorreto ou erro no reenvio
+                counter++;
+            }
 
-        //bytes_read = fread (&read_buffer, sizeof (unsigned char), MAX_DATA, fd_read);
-        bytes_read = read_data (fd_read, read_buffer, MAX_DATA);
-        //bytes_read = read (fd_read, read_buffer, 127);
-        sequencia = (sequencia + 1) % 32;
-        counter++;
+            do {
+                do {
+                    package_assembler(buffer, 0, sequencia, FIM_ARQUIVO, NULL);
+                    memcpy(&backup_sent_buffer, &buffer, sizeof(Package));
 
-        usleep (10);
+                    if (send(socket, buffer, sizeof(buffer), 0) < 0) {
+                        perror("Erro ao enviar\n");
+                        exit(0);
+                    }
+                    printf("%dº Pacote enviado\n", counter);
+                    // for (int i = 4; i < 4 + get_size(buffer); ++i) putchar (buffer[i]);
+                    // usleep (100000); // 100ms
+                } while (recebe_mensagem(socket, 1000, buffer, sizeof(buffer), sequencia) < 0); // espera e reenvia ate obter resposta
+                memcpy(&backup_receiv_buffer, &buffer, sizeof(Package) + get_size(buffer));
+
+                type = get_type(buffer);
+                // usleep (100000); // 100ms
+            } while (checksum(buffer) != buffer[3] && type == NACK);
+
+            recebido = 1;
+            sequencia = (sequencia + 1) % 32;
+        }
+        else {
+            if (sequencia == get_sequence (buffer)) {
+                sequencia = (sequencia + 1) % 32;
+            }
+
+            if (checksum(buffer) == buffer[3])
+                package_assembler(buffer, 0, get_sequence(buffer), OK_ACK, NULL);
+            else {
+                package_assembler(buffer, 0, get_sequence(buffer), NACK, NULL);
+            }
+            if (send(socket, buffer, sizeof(buffer), 0) < 0) {
+                perror("Erro ao enviar\n");
+                exit(0);
+            }
+        }
     }
-
-	fclose (fd_read);
-	return 0;
+    return 0;
 
 }
