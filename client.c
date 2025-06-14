@@ -271,8 +271,9 @@ FILE *abre_arquivo(unsigned char *nome_arquivo) {
         perror("Erro ao criar o arquivo");
         return NULL;
     }
-
-    const char *user = "ubuntu";
+    
+    // Pega o usuário que chamou o sudo (ex: "ubuntu")
+    const char *user = getenv("SUDO_USER");
     struct passwd *pw = getpwnam(user);
     if (pw == NULL) {
         printf("Usuário não encontrado\n");
@@ -292,16 +293,31 @@ FILE *abre_arquivo(unsigned char *nome_arquivo) {
     return fd_write;
 }
 
-void play (unsigned char *nome_arquivo) {
-    printf ("%s\n", nome_arquivo);
-    
-    char comando[300];
-    snprintf(comando, sizeof(comando), "xdg-open \"%s\"", nome_arquivo);
-    int status = system(comando);
-    if (status == -1)
-    {
-        perror("Erro ao executar xdg-open");
+// abre programa do tipo do arquivo
+void play(unsigned char *arquivo) {
+    if (arquivo == NULL) {
+        fprintf(stderr, "Arquivo nulo\n");
         return;
+    }
+
+    // Pega o usuário que chamou o sudo (ex: "ubuntu")
+    const char *usuario = getenv("SUDO_USER");
+    if (usuario == NULL) {
+        fprintf(stderr, "Nao foi possivel detectar o usuario que chamou sudo\n");
+        return;
+    }
+
+    // Monta o comando para abrir com o usuário correto e variáveis do ambiente
+    char comando[512];
+    snprintf(comando, sizeof(comando),
+        "sudo -u %s DISPLAY=$DISPLAY DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS xdg-open \"%s\"",
+        usuario, arquivo);
+
+    printf("Executando: %s\n", comando);
+
+    int status = system(comando);
+    if (status == -1) {
+        perror("Erro ao executar o comando");
     }
 }
 
@@ -319,8 +335,6 @@ int main ( int argc, char** argv ) {
     unsigned char x = 0, y= 0; //player pos
 
     int socket = cria_raw_socket (argv[1]);
-
-    //fd_write = fopen (argv[2], "wb");
     
     unsigned char type;
     unsigned char sequencia = 0;
@@ -496,7 +510,6 @@ int main ( int argc, char** argv ) {
 
             // abre arquivo se ele foi recebido corretamente
             if (!erro) {
-                usleep(1000);
                 play (nome_arquivo);
             }
 
