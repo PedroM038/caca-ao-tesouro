@@ -452,6 +452,8 @@ int main ( int argc, char** argv ) {
                 counter++;
             }
 
+            fclose (fd_read);
+
             do {
                 do {
                     package_assembler(buffer, 0, sequencia, FIM_ARQUIVO, NULL);
