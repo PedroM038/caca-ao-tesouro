@@ -190,6 +190,7 @@ int main ( int argc, char** argv ) {
 
             unsigned char arquivo[64];
             FILE *fd_read = abrir_arquivo_desconhecido (map[x][y], arquivo); 
+	    map[x][y] = 0;
             if (fd_read == NULL) { 
                 printf ("falha ao abrir arquivo\n"); 
                 erro = 1;
