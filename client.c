@@ -95,7 +95,7 @@ void init_game_graphics(GameState *game)
     }
 
     // Posição inicial do jogador (canto inferior esquerdo = 0,0)
-    game->player.x = 0;
+    game->player.x = 7;
     game->player.y = 0;
 }
 
@@ -229,13 +229,13 @@ int controll(SDL_Event *e)
             switch (e->key.keysym.sym)
             {
             case SDLK_w:
-                return CIMA;
-            case SDLK_s:
-                return BAIXO;
-            case SDLK_d:
-                return DIREITA;
-            case SDLK_a:
                 return ESQUERDA;
+            case SDLK_s:
+                return DIREITA;
+            case SDLK_d:
+                return CIMA;
+            case SDLK_a:
+                return BAIXO;
             case SDLK_q:
                 return -1; // Sair do jogo
             }
@@ -259,20 +259,20 @@ void atualiza_pos_local_graphics(GameState *game, unsigned char direcao)
     switch (direcao)
     {
     case CIMA:
-        if (game->player.y < 7)
-            game->player.y++;
+        if (game->player.x > 0)
+            game->player.x--;
         break;
     case BAIXO:
-        if (game->player.y > 0)
-            game->player.y--;
-        break;
-    case DIREITA:
         if (game->player.x < 7)
             game->player.x++;
         break;
+    case DIREITA:
+        if (game->player.y < 7)
+            game->player.y++;
+        break;
     case ESQUERDA:
-        if (game->player.x > 0)
-            game->player.x--;
+        if (game->player.y > 0)
+            game->player.y--;
         break;
     default:
         break;
@@ -328,7 +328,7 @@ int main(int argc, char **argv)
     for (int i = 0; i < 8; i++)
         for (int j = 0; j < 8; j++)
             map[i][j] = 0;
-    unsigned char x = 0, y = 0; // player pos
+    unsigned char x = 7, y = 0; // player pos
 
     int socket = cria_raw_socket(argv[1]);
 
@@ -510,7 +510,7 @@ int main(int argc, char **argv)
                             exit(0);
                         }
                         printf("%dº Pacote enviado\n", counter);
-                        if (recebe_mensagem(socket, 1000, buffer, sizeof(buffer), sequencia) < 0)
+                        if (recebe_mensagem(socket, 100000, buffer, sizeof(buffer), sequencia) < 0)
                         {
                             perror("Erro ao enviar\n");
                             exit(0);
@@ -532,7 +532,7 @@ int main(int argc, char **argv)
                         exit(0);
                     }
 
-                    if (recebe_mensagem(socket, 1000, buffer, sizeof(buffer), sequencia) < 0)
+                    if (recebe_mensagem(socket, 100000, buffer, sizeof(buffer), sequencia) < 0)
                     {
                         perror("Erro ao enviar\n");
                         exit(0);
