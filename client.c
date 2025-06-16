@@ -573,8 +573,7 @@ int main(int argc, char **argv)
                 }
             }
         }
-
-        cleanup_graphics(&gfx);
-        return 0;
     }
+    cleanup_graphics(&gfx);
+    return 0;
 }
