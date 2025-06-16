@@ -268,7 +268,7 @@ int main ( int argc, char** argv ) {
                         }
                         printf ("%dº Pacote enviado\n", counter);
                         //usleep (100000); // 100ms 
-                    } while (recebe_mensagem (socket, 1000, buffer, sizeof (buffer), sequencia) < 0);// espera e reenvia ate obter resposta
+                    } while (recebe_mensagem (socket, 100000, buffer, sizeof (buffer), sequencia) < 0);// espera e reenvia ate obter resposta
 
                     type = get_type (buffer);
                     //usleep (100000); // 100ms 
