@@ -11,11 +11,14 @@ SDL2_LIBS = $(shell pkg-config --libs sdl2 SDL2_image)
 OBJS_UTILS = utils.o
 
 # Cliente (com SDL2)
-CLIENT_OBJS = client.o $(OBJS_UTILS)
+CLIENT_OBJS = client.o front.o $(OBJS_UTILS)
 client: $(CLIENT_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(SDL2_LIBS)
 
 client.o: client.c utils.h
+	$(CC) $(CFLAGS) $(SDL2_CFLAGS) -c $<
+
+front.o: front.c front.h utils.h
 	$(CC) $(CFLAGS) $(SDL2_CFLAGS) -c $<
 
 # Servidor (sem SDL2)

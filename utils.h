@@ -1,3 +1,6 @@
+#ifndef UTILS_H
+#define UTILS_H
+
 #include <time.h>
 #include <arpa/inet.h>
 #include <net/ethernet.h>
@@ -89,3 +92,5 @@ void play(unsigned char *arquivo);
 
 // retorna -1 se deu timeout, ou quantidade de bytes lidos
 int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_buffer, unsigned char sequencia);
+
+#endif // UTILS_H
