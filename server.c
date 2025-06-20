@@ -65,8 +65,6 @@ void preencher_matriz_aleatoria(unsigned char matriz[TAM][TAM]) {
 FILE *abrir_arquivo_desconhecido(int numero, char *nome_saida) {
     const char *exts[] = {"txt", "mp4", "jpg" };
     char nome[64];
-	char caminho[128];
-    snprintf(caminho, sizeof(caminho), "objetos/%s", nome);
 
     for (size_t i = 0; i < sizeof(exts) / sizeof(exts[0]); i++) {
         snprintf(nome, sizeof(nome), "%d.%s", numero, exts[i]);
