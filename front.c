@@ -137,9 +137,9 @@ void draw_game(Graphics *gfx, GameState *game)
 
     // Desenha jogador
     SDL_SetRenderDrawColor(gfx->renderer, 0, 255, 0, 255);
-    SDL_Rect player_rect = {
-        50 + game->player.y * CELL_SIZE + 5,  // y é coluna (horizontal)
-        50 + (7 - game->player.x) * CELL_SIZE + 5,  // x é linha (vertical, invertido)
+     SDL_Rect player_rect = {
+        50 + game->player.y * CELL_SIZE + 5,      // coluna -> x da tela
+        50 + game->player.x * CELL_SIZE + 5,      // linha -> y da tela (sem inversão!)
         CELL_SIZE - 10,
         CELL_SIZE - 10};
 
