@@ -62,6 +62,8 @@ void preencher_matriz_aleatoria(unsigned char matriz[TAM][TAM]) {
     }
 }
 
+// retorna ponteiro do aruqivo
+// argumento tera nome do arquivo e caminho ate o arquivo
 FILE *abrir_arquivo_desconhecido(int numero, char *nome_saida, char *caminho_saida) {
     const char *exts[] = {"txt", "mp4", "jpg" };
     char nome[64];
