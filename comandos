@@ -1,0 +1,6 @@
+sudo apt update
+sudo apt install gcc
+sudo apt instal make
+sudo apt install mpv
+xdg-mime default mpv.desktop video/mp4
+sudo apt-get install libsdl2-dev libsdl2-image-dev
