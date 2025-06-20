@@ -90,11 +90,11 @@ off_t tamanho_arquivo(const char *caminho_arquivo) {
             return st.st_size;
         } else {
             // Não é um arquivo regular
-            return -1;
+            return 0;
         }
     } else {
         // Erro ao obter informações do arquivo
-        return -1;
+        return 0;
     }
 }
 
