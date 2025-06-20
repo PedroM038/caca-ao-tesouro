@@ -175,8 +175,8 @@ int main ( int argc, char** argv ) {
             int erro = 0;
             printf ("PLAYER ENCONTROU OBJETO!!!\n");
 
-            unsigned char arquivo[TAMANHO_NOME_ARQUIVO];
-            unsigned char caminho[2*TAMANHO_NOME_ARQUIVO];
+            unsigned char arquivo[TAMANHO_NOME_ARQUIVO]; // nome do arquivo
+            unsigned char caminho[2*TAMANHO_NOME_ARQUIVO]; // caminho ate o arquivo + nome do arquivo
             FILE *fd_read = abrir_arquivo_desconhecido (map[x][y], arquivo, caminho); 
 	        map[x][y] = 0;
             if (fd_read == NULL) { 
