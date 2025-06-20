@@ -182,3 +182,19 @@ void play(unsigned char *arquivo) {
         perror("Erro ao executar o comando");
     }
 }
+
+// retorna -1 se deu timeout, ou quantidade de bytes lidos
+int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_buffer, unsigned char sequencia) {
+    long long comeco = timestamp();
+    struct timeval timeout;
+    timeout.tv_sec = timeoutMillis/1000;
+    timeout.tv_usec = (timeoutMillis%1000) * 1000;
+    setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
+    int bytes_lidos;
+    unsigned char received_sequence;
+    do {
+        bytes_lidos = recv(soquete, buffer, tamanho_buffer, 0);
+        if (protocolo_e_valido(buffer, bytes_lidos, sequencia)) { return bytes_lidos; }
+    } while ((timestamp() - comeco <= timeoutMillis));
+    return -1;
+}

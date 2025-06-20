@@ -85,22 +85,6 @@ FILE *abrir_arquivo_desconhecido(int numero, char *nome_saida) {
     return NULL;
 }
 
-// retorna -1 se deu timeout, ou quantidade de bytes lidos
-int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_buffer, unsigned char sequencia) {
-    long long comeco = timestamp();
-    struct timeval timeout;
-    timeout.tv_sec = timeoutMillis/1000;
-    timeout.tv_usec = (timeoutMillis%1000) * 1000;
-    setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
-    int bytes_lidos;
-    unsigned char received_sequence;
-    do {
-        bytes_lidos = recv(soquete, buffer, tamanho_buffer, 0);
-        if (protocolo_e_valido(buffer, bytes_lidos, sequencia)) { return bytes_lidos; }
-    } while ((timestamp() - comeco <= timeoutMillis));
-    return -1;
-}
-
 int main ( int argc, char** argv ) {
     if (argc < 2) { 
 		printf ("executar ./server <nome da porta> <nome_do_arquivo_fonte>\n"); 
@@ -123,7 +107,7 @@ int main ( int argc, char** argv ) {
 
     preencher_matriz_aleatoria (map);
 
-    unsigned char x = 0, y= 0; //player pos
+    unsigned char x = 7, y= 0; //player pos
     int recebido = 1;
     while (1) {        
         printf ("linha = %d coluna =%d\n", x, y);

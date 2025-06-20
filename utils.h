@@ -86,3 +86,6 @@ FILE *abre_arquivo(unsigned char *nome_arquivo);
 
 // abre programa do tipo do arquivo
 void play(unsigned char *arquivo);
+
+// retorna -1 se deu timeout, ou quantidade de bytes lidos
+int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_buffer, unsigned char sequencia);
