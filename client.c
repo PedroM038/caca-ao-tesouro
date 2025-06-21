@@ -118,11 +118,11 @@ int main(int argc, char **argv)
                         exit(0);
                     }
                     printf("%dº Pacote enviado\n", counter);
-                } while (recebe_mensagem(socket, 1000, buffer, sizeof(buffer), sequencia) < 0); // espera e reenvia ate obter resposta
+                } while (recebe_mensagem(socket, TEMPO_REENVIO, buffer, sizeof(buffer), sequencia) < 0); // espera e reenvia ate obter resposta
                 memcpy(&backup_receiv_buffer, &buffer, sizeof(Package) + get_size(buffer));
 
                 type = get_type(buffer);
-            } while (checksum(buffer) != buffer[3] && type == NACK /*|| (type != OK_ACK && type != TEXTO_ACK_NOME && type != VIDEO_ACK_NOME && type != IMAGEM_ACK_NOME)*/); // checksum incorreto ou erro no reenvio
+            } while (checksum(buffer) != buffer[CHECKSUM] && type == NACK); // checksum incorreto ou erro no reenvio
 
             // recebe arquivo
             if ((type == TEXTO_ACK_NOME || type == IMAGEM_ACK_NOME || type == VIDEO_ACK_NOME))
@@ -154,7 +154,7 @@ int main(int argc, char **argv)
 
                 do
                 {
-                    if (checksum(buffer) == buffer[3])
+                    if (checksum(buffer) == buffer[CHECKSUM])
                     {
                         if (get_type(buffer) == TAMANHO && sequencia == get_sequence(buffer))
                         {
@@ -169,7 +169,6 @@ int main(int argc, char **argv)
                                     perror("Erro ao enviar\n");
                                     exit(0);
                                 }
-                                printf("%dº Pacote enviado\n", counter);
                             }
                             else
                             { // erro para receber arquivo, envia codigo de erro junto da mensagem
@@ -216,23 +215,23 @@ int main(int argc, char **argv)
                         printf("%dº Pacote enviado\n", counter);
                     }
 
-                    if (recebe_mensagem(socket, 1000, buffer, sizeof(buffer), sequencia) < 0)
+                    if (recebe_mensagem(socket, TIMEOUT, buffer, sizeof(buffer), sequencia) < 0)
                     {
                         perror("Timeout\n");
                         exit(0);
                     }
-                } while (checksum(buffer) != buffer[3]);
+                } while (checksum(buffer) != buffer[CHECKSUM]);
                 sequencia = (sequencia + 1) % 32;
 
-                if (recebe_mensagem(socket, 1000, buffer, sizeof(buffer), sequencia) < 0)
+                if (recebe_mensagem(socket, TIMEOUT, buffer, sizeof(buffer), sequencia) < 0)
                 {
-                    perror("Erro ao receber\n");
+                    perror("Timeout\n");
                     exit(0);
                 }
 
                 while (get_type(buffer) != FIM_ARQUIVO)
                 {
-                    while (checksum(buffer) != buffer[3])
+                    while (checksum(buffer) != buffer[CHECKSUM])
                     { // checksum incorreto ou erro no reenvio
 
                         package_assembler(buffer, 0, get_sequence(buffer), NACK, NULL);
@@ -242,9 +241,9 @@ int main(int argc, char **argv)
                             exit(0);
                         }
                         printf("%dº Pacote enviado\n", counter);
-                        if (recebe_mensagem(socket, 100000, buffer, sizeof(buffer), sequencia) < 0)
+                        if (recebe_mensagem(socket, TIMEOUT, buffer, sizeof(buffer), sequencia) < 0)
                         {
-                            perror("Erro ao enviar\n");
+                            perror("Timeout\n");
                             exit(0);
                         }
                         type = get_type(buffer);
@@ -264,9 +263,9 @@ int main(int argc, char **argv)
                         exit(0);
                     }
 
-                    if (recebe_mensagem(socket, 100000, buffer, sizeof(buffer), sequencia) < 0)
+                    if (recebe_mensagem(socket, TIMEOUT, buffer, sizeof(buffer), sequencia) < 0)
                     {
-                        perror("Erro ao enviar\n");
+                        perror("Timeout\n");
                         exit(0);
                     }
                 }
