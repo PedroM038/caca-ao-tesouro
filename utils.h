@@ -20,6 +20,7 @@
 #include <pwd.h>
 
 #define ESCAPE_BYTE 0xFF
+#define CHECKSUM 3
 #define DATA 4
 #define MIN_SIZE 22
 #define MAX_DATA 127
@@ -50,6 +51,9 @@
 
 #define TAM 8
 #define VALORES 8
+
+#define TIMEOUT 30000
+#define TEMPO_REENVIO 1000
 
  typedef struct Package {
     unsigned char start;
