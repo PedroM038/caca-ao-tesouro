@@ -109,7 +109,7 @@ void draw_game(Graphics *gfx, GameState *game)
             {
                 SDL_Rect rect = {
                     50 + y * CELL_SIZE + 2,  // y é coluna (horizontal)
-                    50 + (7 - x) * CELL_SIZE + 2,  // x é linha (vertical, invertido)
+                    50 + x * CELL_SIZE + 2,  // x é linha (vertical)
                     CELL_SIZE - 4,
                     CELL_SIZE - 4};
                 SDL_RenderFillRect(gfx->renderer, &rect);
@@ -127,7 +127,7 @@ void draw_game(Graphics *gfx, GameState *game)
             {
                 SDL_Rect rect = {
                     50 + y * CELL_SIZE + 10,  // y é coluna (horizontal)
-                    50 + (7 - x) * CELL_SIZE + 10,  // x é linha (vertical, invertido)
+                    50 + x * CELL_SIZE + 10,  // x é linha (vertical)
                     CELL_SIZE - 20,
                     CELL_SIZE - 20};
                 SDL_RenderFillRect(gfx->renderer, &rect);
@@ -139,7 +139,7 @@ void draw_game(Graphics *gfx, GameState *game)
     SDL_SetRenderDrawColor(gfx->renderer, 0, 255, 0, 255);
      SDL_Rect player_rect = {
         50 + game->player.y * CELL_SIZE + 5,      // coluna -> x da tela
-        50 + game->player.x * CELL_SIZE + 5,      // linha -> y da tela (sem inversão!)
+        50 + game->player.x * CELL_SIZE + 5,      // linha -> y da tela
         CELL_SIZE - 10,
         CELL_SIZE - 10};
 
