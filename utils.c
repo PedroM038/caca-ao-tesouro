@@ -76,7 +76,7 @@ void package_assembler (unsigned char *buffer, unsigned char size, unsigned char
         memset(&buffer[DATA], 0, MIN_SIZE);
     else    
         memcpy (&buffer[DATA], data, size);
-    buffer[3] = checksum (buffer);
+    buffer[CHECKSUM] = checksum (buffer);
 }
 
 // Retorna o tamanho do arquivo em bytes ou -1 em caso de erro
