@@ -99,12 +99,12 @@ make
 
 **Servidor:**
 ```bash
-sudo ./server <nome_da_porta> <nome_do_arquivo_fonte>
+sudo ./server <nome_da_porta>
 ```
 
 **Cliente:**
 ```bash
-sudo ./client <argumentos>
+sudo ./client <nome_da_porta>
 ```
 
 ## 7. Observações Importantes
