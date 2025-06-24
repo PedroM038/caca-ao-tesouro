@@ -99,24 +99,10 @@ make
 
 **Servidor:**
 ```bash
-sudo ./server <nome_da_porta> <nome_do_arquivo_fonte>
+sudo ./server <nome_da_porta>
 ```
 
 **Cliente:**
 ```bash
-sudo ./client <argumentos>
+sudo ./client <nome_da_porta>
 ```
-
-## 7. Observações Importantes
-
-- **Responsabilidade ACK/NACK**: Apenas uma das partes é responsável pelo envio
-- **Armazenamento**: Recomenda-se armazenar última mensagem recebida e enviada
-- **Modo root**: Necessário para uso de raw sockets
-- **Conexão direta**: Cabo de rede direto entre máquinas (sem switches)
-
-## 8. Entrega
-
-- Relatório obrigatório (formato artigo SBC)
-- Apresentação em laboratório do DINF
-- Todos os membros devem dominar o trabalho
-- **Não pode haver atraso na entrega**

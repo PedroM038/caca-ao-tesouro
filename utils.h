@@ -1,3 +1,6 @@
+#ifndef UTILS_H
+#define UTILS_H
+
 #include <time.h>
 #include <arpa/inet.h>
 #include <net/ethernet.h>
@@ -17,6 +20,7 @@
 #include <pwd.h>
 
 #define ESCAPE_BYTE 0xFF
+#define CHECKSUM 3
 #define DATA 4
 #define MIN_SIZE 22
 #define MAX_DATA 127
@@ -47,6 +51,9 @@
 
 #define TAM 8
 #define VALORES 8
+
+#define TIMEOUT 30000
+#define TEMPO_REENVIO 1000
 
  typedef struct Package {
     unsigned char start;
@@ -86,3 +93,8 @@ FILE *abre_arquivo(unsigned char *nome_arquivo);
 
 // abre programa do tipo do arquivo
 void play(unsigned char *arquivo);
+
+// retorna -1 se deu timeout, ou quantidade de bytes lidos
+int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_buffer, unsigned char sequencia);
+
+#endif // UTILS_H

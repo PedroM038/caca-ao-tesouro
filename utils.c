@@ -76,7 +76,7 @@ void package_assembler (unsigned char *buffer, unsigned char size, unsigned char
         memset(&buffer[DATA], 0, MIN_SIZE);
     else    
         memcpy (&buffer[DATA], data, size);
-    buffer[3] = checksum (buffer);
+    buffer[CHECKSUM] = checksum (buffer);
 }
 
 // Retorna o tamanho do arquivo em bytes ou -1 em caso de erro
@@ -90,11 +90,11 @@ off_t tamanho_arquivo(const char *caminho_arquivo) {
             return st.st_size;
         } else {
             // Não é um arquivo regular
-            return -1;
+            return 0;
         }
     } else {
         // Erro ao obter informações do arquivo
-        return -1;
+        return 0;
     }
 }
 
@@ -181,4 +181,20 @@ void play(unsigned char *arquivo) {
     if (status == -1) {
         perror("Erro ao executar o comando");
     }
+}
+
+// retorna -1 se deu timeout, ou quantidade de bytes lidos
+int recebe_mensagem(int soquete, int timeoutMillis, char* buffer, int tamanho_buffer, unsigned char sequencia) {
+    long long comeco = timestamp();
+    struct timeval timeout;
+    timeout.tv_sec = timeoutMillis/1000;
+    timeout.tv_usec = (timeoutMillis%1000) * 1000;
+    setsockopt(soquete, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout));
+    int bytes_lidos;
+    unsigned char received_sequence;
+    do {
+        bytes_lidos = recv(soquete, buffer, tamanho_buffer, 0);
+        if (protocolo_e_valido(buffer, bytes_lidos, sequencia)) { return bytes_lidos; }
+    } while ((timestamp() - comeco <= timeoutMillis));
+    return -1;
 }
