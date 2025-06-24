@@ -38,13 +38,13 @@ void preencher_matriz_aleatoria(unsigned char matriz[TAM][TAM]) {
         }
     }
 
-    // Gera posições aleatórias únicas para os 9 números
+    // Gera posições aleatórias únicas para os números
     int posicoes[TAM * TAM];
     for (int i = 0; i < TAM * TAM; i++) {
         posicoes[i] = i;
     }
 
-    // Embaralha as posições (Fisher–Yates shuffle)
+    // Embaralha as posições
     for (int i = TAM * TAM - 1; i > 0; i--) {
         int j = rand() % (i + 1);
         int tmp = posicoes[i];
@@ -52,7 +52,7 @@ void preencher_matriz_aleatoria(unsigned char matriz[TAM][TAM]) {
         posicoes[j] = tmp;
     }
 
-    // Coloca os valores de 1 a 9 nas primeiras 9 posições embaralhadas
+    // Coloca os valores de 1 a 8 nas primeiras posições embaralhadas
     for (int k = 0; k < VALORES; k++) {
         int idx = posicoes[k];
         int linha = idx / TAM;
