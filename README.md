@@ -7,7 +7,7 @@ O objetivo deste trabalho é implementar um jogo de caça ao tesouro no contexto
 ### Características do Projeto
 - **Modelo**: Cliente-servidor
 - **Comunicação**: Raw sockets
-- **Implementação**: C, C++ ou Go
+- **Implementação**: C
 - **Requisitos**: Máquinas distintas em modo root, interligadas por cabo de rede direto
 
 ## 2. Funcionamento do Jogo
@@ -32,7 +32,6 @@ Os tesouros são arquivos localizados no diretório "objetos" com nomes de 1 a 8
 
 **Limitações**:
 - Nome do arquivo: máximo 63 bytes
-- Caracteres ASCII: faixa 0x20 a 0x7E
 
 ## 3. Protocolo de Comunicação
 
@@ -78,15 +77,7 @@ Protocolo inspirado no Kermit com os seguintes campos:
 ## 4. Implementação
 
 ### Controle de Fluxo
-- **Obrigatório**: Stop-and-wait
-- **Pontos extras**: Janelas deslizantes (tamanho 3) com Go-Back-N
-
-### Requisitos Técnicos
-- Campos do frame, códigos de erro e variáveis de controle devem ser `unsigned`
-- Usar `unsigned char` sempre que possível
-- Não utilizar `float` em campos de protocolo
-- Tratar timeouts e falhas na comunicação
-- Implementar aritmética de números seriais para verificação de sequência
+- Stop-and-wait
 
 ## 6. Como Usar
 
